@@ -2,6 +2,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
 import time
 
 
@@ -10,24 +11,46 @@ class LoginBot:
 
     def __init__(self, base_url: str):
         self.base_url = base_url
-        self.driver = webdriver.Chrome()   # Selenium 4+ auto-manages the driver
-        self.wait = WebDriverWait(self.driver, 10)
+        options = Options()
+        options.add_experimental_option("prefs", {
+            "credentials_enable_service": False,
+            "profile.password_manager_enabled": False,
+            "profile.password_manager_leak_detection": False
+        })
+        options.add_argument("--disable-notifications")
+        options.add_argument("--disable-features=PasswordLeakDetection,PasswordCheck,AutofillServerCommunication")
+        self.driver = webdriver.Chrome(options=options)
+        self.wait = WebDriverWait(self.driver, 20)
 
     def open_login_page(self):
         self.driver.get(f"{self.base_url}/login")
+        self.wait.until(EC.presence_of_element_located((By.ID, "username")))
 
     def login(self, username: str, password: str):
-        self.driver.find_element(By.ID, "username").clear()
-        self.driver.find_element(By.ID, "username").send_keys(username)
-        self.driver.find_element(By.ID, "password").clear()
-        self.driver.find_element(By.ID, "password").send_keys(password)
+        username_field = self.driver.find_element(By.ID, "username")
+        username_field.clear()
+        username_field.send_keys(username)
+
+        password_field = self.driver.find_element(By.ID, "password")
+        password_field.clear()
+        password_field.send_keys(password)
+
         self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
 
     def get_message(self) -> str:
-        message = self.wait.until(
-            EC.presence_of_element_located((By.ID, "flash"))
-        )
-        return message.text
+        try:
+            message = self.wait.until(
+                EC.visibility_of_element_located((By.ID, "flash"))
+            )
+            return message.text
+        except Exception as e:
+            print("---- DEBUG INFO ----")
+            print("Current URL:", self.driver.current_url)
+            print("Page title:", self.driver.title)
+            self.driver.save_screenshot("debug_screenshot.png")
+            print("Screenshot saved as debug_screenshot.png in your project folder")
+            print("--------------------")
+            raise e
 
     def test_valid_login(self):
         self.open_login_page()
@@ -43,19 +66,18 @@ class LoginBot:
 
     def test_dropdown(self):
         self.driver.get(f"{self.base_url}/dropdown")
-        dropdown = Select(self.driver.find_element(By.ID, "dropdown"))
+        dropdown = Select(self.wait.until(EC.presence_of_element_located((By.ID, "dropdown"))))
         dropdown.select_by_visible_text("Option 2")
-        selected = dropdown.first_selected_option.text
-        print(f"[Dropdown test] Selected: {selected}")
+        print(f"[Dropdown test] Selected: {dropdown.first_selected_option.text}")
 
     def test_checkbox(self):
         self.driver.get(f"{self.base_url}/checkboxes")
-        checkboxes = self.driver.find_elements(By.CSS_SELECTOR, "#checkboxes input")
+        checkboxes = self.wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "#checkboxes input")))
         checkboxes[0].click()
         print(f"[Checkbox test] Checkbox 1 checked: {checkboxes[0].is_selected()}")
 
     def close(self):
-        time.sleep(2)  # brief pause so you can see the final state
+        time.sleep(2)
         self.driver.quit()
 
 
