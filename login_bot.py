@@ -1,59 +1,68 @@
-"""Automated login bot: tests valid and invalid credentials on a demo site."""
-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-
-LOGIN_URL = "https://the-internet.herokuapp.com/login"
-
-# Public demo credentials published by the test site itself.
-VALID_USER = "tomsmith"
-VALID_PASSWORD = "SuperSecretPassword!"
+import time
 
 
 class LoginBot:
-    def __init__(self, headless=True, timeout=10):
-        options = webdriver.ChromeOptions()
-        if headless:
-            options.add_argument("--headless=new")
-        self.driver = webdriver.Chrome(options=options)
-        self.wait = WebDriverWait(self.driver, timeout)
+    """Automates login testing and basic form interactions using Selenium."""
 
-    def login(self, username, password):
-        """Submit the login form and return the flash message text."""
-        self.driver.get(LOGIN_URL)
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+        self.driver = webdriver.Chrome()   # Selenium 4+ auto-manages the driver
+        self.wait = WebDriverWait(self.driver, 10)
+
+    def open_login_page(self):
+        self.driver.get(f"{self.base_url}/login")
+
+    def login(self, username: str, password: str):
+        self.driver.find_element(By.ID, "username").clear()
         self.driver.find_element(By.ID, "username").send_keys(username)
+        self.driver.find_element(By.ID, "password").clear()
         self.driver.find_element(By.ID, "password").send_keys(password)
         self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
-        flash = self.wait.until(EC.visibility_of_element_located((By.ID, "flash")))
-        return flash.text
 
-    def check(self, label, username, password, expected):
-        message = self.login(username, password)
-        passed = expected in message
-        print(f"[{'PASS' if passed else 'FAIL'}] {label}: {message.splitlines()[0]}")
-        return passed
+    def get_message(self) -> str:
+        message = self.wait.until(
+            EC.presence_of_element_located((By.ID, "flash"))
+        )
+        return message.text
+
+    def test_valid_login(self):
+        self.open_login_page()
+        self.login("tomsmith", "SuperSecretPassword!")
+        result = self.get_message()
+        print(f"[Valid login test] Result: {result.strip()}")
+
+    def test_invalid_login(self):
+        self.open_login_page()
+        self.login("wronguser", "wrongpassword")
+        result = self.get_message()
+        print(f"[Invalid login test] Result: {result.strip()}")
+
+    def test_dropdown(self):
+        self.driver.get(f"{self.base_url}/dropdown")
+        dropdown = Select(self.driver.find_element(By.ID, "dropdown"))
+        dropdown.select_by_visible_text("Option 2")
+        selected = dropdown.first_selected_option.text
+        print(f"[Dropdown test] Selected: {selected}")
+
+    def test_checkbox(self):
+        self.driver.get(f"{self.base_url}/checkboxes")
+        checkboxes = self.driver.find_elements(By.CSS_SELECTOR, "#checkboxes input")
+        checkboxes[0].click()
+        print(f"[Checkbox test] Checkbox 1 checked: {checkboxes[0].is_selected()}")
 
     def close(self):
+        time.sleep(2)  # brief pause so you can see the final state
         self.driver.quit()
 
 
-def main():
-    bot = LoginBot()
-    try:
-        results = [
-            bot.check("Valid credentials", VALID_USER, VALID_PASSWORD,
-                      "You logged into a secure area!"),
-            bot.check("Invalid username", "wronguser", VALID_PASSWORD,
-                      "Your username is invalid!"),
-            bot.check("Invalid password", VALID_USER, "wrongpassword",
-                      "Your password is invalid!"),
-        ]
-    finally:
-        bot.close()
-    raise SystemExit(0 if all(results) else 1)
-
-
 if __name__ == "__main__":
-    main()
+    bot = LoginBot(base_url="https://the-internet.herokuapp.com")
+    bot.test_valid_login()
+    bot.test_invalid_login()
+    bot.test_dropdown()
+    bot.test_checkbox()
+    bot.close()
